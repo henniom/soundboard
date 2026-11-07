@@ -6,7 +6,7 @@
    über die Web Audio API (geringe Latenz).
    ========================================================= */
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const DB_NAME = 'soundboard';
 const STORE = 'tiles';
 const MAX_REC_MS = 2 * 60 * 1000; // max. 2 Minuten Aufnahme
@@ -163,6 +163,7 @@ function requestPersist() {
 let ctx = null;
 const buffers = new Map();   // tileId -> AudioBuffer
 const decoding = new Map();  // tileId -> Promise
+const undecodable = new Set(); // tileIds, die nur per <audio> abspielbar sind
 
 function setSession(type) {
   // Safari 16.4+: 'playback' ignoriert den Lautlos-Schalter
@@ -195,9 +196,10 @@ function decodeTile(t) {
   if (!t.audio) return Promise.resolve(null);
   if (buffers.has(t.id)) return Promise.resolve(buffers.get(t.id));
   if (decoding.has(t.id)) return decoding.get(t.id);
+  if (undecodable.has(t.id)) return Promise.resolve(null);
   const p = decode(t.audio)
     .then((b) => { buffers.set(t.id, b); return b; })
-    .catch(() => null)
+    .catch(() => { undecodable.add(t.id); return null; })
     .finally(() => decoding.delete(t.id));
   decoding.set(t.id, p);
   return p;
@@ -635,6 +637,8 @@ el.edSave.addEventListener('click', async () => {
   }
   if (d.audioChanged) {
     buffers.delete(tile.id);
+    undecodable.delete(tile.id);
+    if (!draftBuffer) undecodable.add(tile.id);
     if (draftBuffer) buffers.set(tile.id, draftBuffer);
   }
   const i = tiles.findIndex((t) => t.id === tile.id);
@@ -683,8 +687,12 @@ el.audioFile.addEventListener('change', async () => {
   el.audioFile.value = '';
   if (!f || !draft) return;
   if (f.size > MAX_FILE_BYTES) { toast('Datei zu groß (max. 30 MB)'); return; }
-  const ab = await f.arrayBuffer();
-  const ok = await applyDraftAudio(ab, f.type || 'audio/mpeg', 'Datei');
+  let ab;
+  try { ab = await f.arrayBuffer(); } catch (err) {
+    dialog({ title: 'Datei nicht lesbar', text: 'Die Datei konnte nicht geöffnet werden. Liegt sie in iCloud? Dann in der Dateien-App einmal antippen, damit sie heruntergeladen wird.' });
+    return;
+  }
+  const ok = await applyDraftAudio(ab, mimeFor(f), 'Datei', f.name);
   if (ok && !el.edName.value.trim()) {
     el.edName.value = f.name.replace(/\.[^.]+$/, '').slice(0, 30);
     draft.name = el.edName.value;
@@ -692,21 +700,65 @@ el.audioFile.addEventListener('change', async () => {
   }
 });
 
-async function applyDraftAudio(ab, mime, source) {
-  let buf;
+const EXT_MIME = {
+  m4a: 'audio/mp4', m4b: 'audio/mp4', m4r: 'audio/mp4', mp4: 'audio/mp4', '3gp': 'audio/3gpp',
+  aac: 'audio/aac', mp3: 'audio/mpeg', wav: 'audio/wav', caf: 'audio/x-caf',
+  aif: 'audio/aiff', aiff: 'audio/aiff', flac: 'audio/flac', ogg: 'audio/ogg', opus: 'audio/ogg', webm: 'audio/webm'
+};
+function mimeFor(f) {
+  const ext = (f.name.split('.').pop() || '').toLowerCase();
+  // Endung hat Vorrang: iOS meldet bei m4a teils "audio/x-m4a" oder gar keinen Typ
+  return EXT_MIME[ext] || f.type || 'audio/mp4';
+}
+
+// Fallback: Format über das <audio>-Element prüfen (z.B. Apple Lossless)
+function probeWithElement(ab, mime) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(new Blob([ab], { type: mime }));
+    const a = new Audio();
+    a.preload = 'metadata';
+    let done = false;
+    const finish = (fn, v) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      a.removeAttribute('src');
+      a.load();
+      URL.revokeObjectURL(url);
+      fn(v);
+    };
+    const timer = setTimeout(() => finish(reject, new Error('Zeitüberschreitung')), 8000);
+    a.onloadedmetadata = () => finish(resolve, isFinite(a.duration) ? a.duration : 0);
+    a.onerror = () => finish(reject, new Error('Format nicht abspielbar'));
+    a.src = url;
+  });
+}
+
+async function applyDraftAudio(ab, mime, source, fileName) {
+  let buf = null;
+  let duration = 0;
   try {
     buf = await decode(ab);
+    duration = buf.duration;
   } catch (err) {
-    toast('Dieses Audioformat wird nicht unterstützt');
-    return false;
+    try {
+      duration = await probeWithElement(ab, mime);
+    } catch (err2) {
+      dialog({
+        title: 'Datei kann nicht verwendet werden',
+        text: (fileName ? '„' + fileName + '“' : 'Die Aufnahme') + ' ließ sich nicht abspielen (' + mime + ', ' +
+          Math.round(ab.byteLength / 1024) + ' KB). Möglicherweise ist die Datei beschädigt oder geschützt (z.B. Kauftitel aus iTunes mit Kopierschutz).'
+      });
+      return false;
+    }
   }
   if (!draft) return false;
   draft.audio = ab;
   draft.mime = mime;
-  draft.duration = buf.duration;
+  draft.duration = duration;
   draft.source = source;
   draft.audioChanged = true;
-  draftBuffer = buf;
+  draftBuffer = buf; // null => Wiedergabe über <audio>-Element
   updateEditorUI();
   return true;
 }
