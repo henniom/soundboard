@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Soundboard">
+  <title>Soundboard</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button id="menuBtn" class="icon-btn" aria-label="Menü">⋯</button>
+    <h1>Soundboard</h1>
+    <button id="editBtn" class="pill">Bearbeiten</button>
+  </header>
+
+  <main id="board" class="board" aria-live="polite"></main>
+
+  <section id="empty" class="empty" hidden>
+    <div class="empty-icon">🎛️</div>
+    <h2>Noch keine Sounds</h2>
+    <p>Leg deine erste Taste an und nimm einen Sound auf oder wähle eine Audiodatei.</p>
+    <button id="emptyAdd" class="btn primary">+ Erste Taste anlegen</button>
+  </section>
+
+  <!-- Wiedergabe-Leiste -->
+  <div id="nowBar" class="nowbar" aria-hidden="true">
+    <div class="nowbar-progress"><div id="nowProgress"></div></div>
+    <span id="nowEmoji" class="now-emoji"></span>
+    <span id="nowName" class="now-name"></span>
+    <button id="nowStop" class="now-stop" aria-label="Stopp">■</button>
+  </div>
+
+  <!-- Editor -->
+  <div id="editor" class="overlay" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="sheet">
+      <div class="sheet-head">
+        <button id="edCancel" class="link">Abbrechen</button>
+        <h2 id="edTitle">Taste bearbeiten</h2>
+        <button id="edSave" class="link strong">Speichern</button>
+      </div>
+      <div class="sheet-body">
+        <div class="preview-wrap">
+          <div id="edPreview" class="tile preview"><span class="emoji"></span><span class="name"></span></div>
+        </div>
+
+        <label class="field">
+          <span class="label">Name</span>
+          <input id="edName" type="text" maxlength="30" placeholder="z.B. Applaus" autocomplete="off" enterkeyhint="done">
+        </label>
+
+        <div class="field">
+          <span class="label">Sound</span>
+          <div id="edSoundInfo" class="sound-info">Noch kein Sound</div>
+          <div class="sound-actions">
+            <button id="edRec" class="btn rec">● Aufnehmen</button>
+            <button id="edFile" class="btn">📁 Datei</button>
+            <button id="edPlay" class="btn">▶ Anhören</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="label">Symbol</span>
+          <div class="emoji-row">
+            <input id="edEmoji" type="text" placeholder="Emoji eingeben" autocomplete="off" enterkeyhint="done">
+            <button id="edEmojiClear" class="btn small">Keins</button>
+          </div>
+          <div id="edEmojiGrid" class="emoji-grid"></div>
+        </div>
+
+        <div class="field">
+          <span class="label">Farbe</span>
+          <div id="edColors" class="colors"></div>
+        </div>
+
+        <button id="edDelete" class="btn danger wide">Taste löschen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Menü -->
+  <div id="menu" class="overlay" aria-hidden="true">
+    <div class="sheet menu-sheet">
+      <button class="menu-item" data-action="export">💾 Backup exportieren</button>
+      <button class="menu-item" data-action="import">📥 Backup importieren</button>
+      <button class="menu-item" data-action="help">❓ Hilfe</button>
+      <button class="menu-item cancel" data-action="close">Schließen</button>
+    </div>
+  </div>
+
+  <!-- Dialog -->
+  <div id="dialog" class="overlay center" aria-hidden="true" role="alertdialog" aria-modal="true">
+    <div class="dialog-card">
+      <h3 id="dlgTitle"></h3>
+      <div id="dlgText" class="dlg-text"></div>
+      <div id="dlgBtns" class="dlg-btns"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <input type="file" id="audioFile" accept="audio/*" hidden>
+  <input type="file" id="backupFile" accept=".json,application/json" hidden>
+
+  <script src="app.js"></script>
+</body>
+</html>
